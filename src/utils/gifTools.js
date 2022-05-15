@@ -1,116 +1,111 @@
-import utils from "./utils";
-import SuperGif from "libgif";
-import gifshot from "./gifshot"
-import config from "../config/config"
+import SuperGif from 'libgif'
+import gifshot from './gifshot'
+import config from '../config/config'
 
-function readFile() {
-  console.log("读取了文件");
+async function readGif(url) {
+  var gifImg = createImgElement(url)
+
+  var superGif = new SuperGif({ gif: gifImg })
+  console.log('gif has been read:')
+  console.log(superGif)
+  return superGif
 }
 
-async function readGif() {
-  let gifFile = "/src/assets/wangjingze.gif";
+async function renderGifWithSubtitle(url, subtitleConfigs, fontSetting, isSlowMotion, elementRef) {
+  console.log(elementRef)
+  console.log(subtitleConfigs)
 
-  let res = await utils.CheckImgExists(gifFile);
+  var superGif = await readGif(url)
+  var img_list = []
+  await readEveryFrames(superGif, img_list)
 
-  var gifImg;
+  var image_list_with_subtitle = fillImageWithSubtitles(subtitleConfigs, img_list, isSlowMotion)
+  console.log(image_list_with_subtitle)
 
-  if(res) {
-    gifImg= createImgElement(gifFile);
-  }else {
-    console.error('输入的不是gif 文件');
-  }
-
- 
-
-  
-
-  var rub = new SuperGif({ gif: gifImg });
-  var img_list = [];
-  await readEveryFrames(rub, img_list);
-
-
-  // let subtitleConfigStr = "/src/assets/gif-subtitle-config.json";
-  let subtitleConfigs = config.subtitleConfig;
-  var subtitles = new Array();
-
-  for (let index = 0; index < subtitleConfigs.subtitles.length; index++) {
-    const element = subtitleConfigs.subtitles[index];
-
-    for (let subIndex = element.startFrameIndex; subIndex < element.startFrameIndex + element.duration ; subIndex++) {
-      subtitles[subIndex] = element.text;
+  gifshot.createGIF(
+    {
+      images: image_list_with_subtitle,
+      frameDuration: isSlowMotion ? 2 : 1,
+      fontColor: fontSetting ? fontSetting.fontColor : '#ffffff',
+      fontSize: fontSetting ? fontSetting.size : '16px'
+    },
+    function (obj) {
+      if (!obj.error) {
+        elementRef.url = obj.image
+        // if not use vue, we just operate DOM
+        // var animatedImage2 = document.getElementById("archie");
+        // animatedImage.data.src = image;
+        // document.body.appendChild(animatedImage);
+      } else {
+        console.log(obj)
+      }
     }
-  }
-
-  console.log("读取到的多少帧" + img_list.length);
-
-  var image_list_with_subtitle = [];
-  for (let index = 0; index < img_list.length; index++) {
-    image_list_with_subtitle.push({
-        src:img_list[index],
-        text: subtitles[index] ? subtitles[index] : ""
-    })
-      
-  }
-
-  console.log(image_list_with_subtitle);
-
-
-  gifshot.createGIF({
-    'images': image_list_with_subtitle,
-
-  },function(obj) {
-    if(!obj.error) {
-      var image = obj.image,
-      animatedImage = document.getElementById("archie");
-    //   animatedImage1 = document.getElementById("archie");
-      animatedImage.src = image;
-    //   document.body.appendChild(animatedImage);
-    }
-  });
-
- 
- 
-  console.log(rub);
-
-  console.log(res);
+  )
 }
 
 async function readEveryFrames(rub, image_list) {
   return new Promise((resolve, reject) => {
     rub.load(() => {
-      console.log("长度：" + rub.get_length());
+      console.log('gif length：' + rub.get_length())
 
       for (let i = 1; i <= rub.get_length(); i++) {
-        // 遍历gif实例的每一帧
-        rub.move_to(i);
-        // 将每一帧的canvas转换成file对象
-        let cur_file = rub.get_canvas().toDataURL();
-        //   console.log(cur_file);
-        image_list.push(cur_file);
+        // loop every frame of Gif
+        rub.move_to(i)
+        // convert every frame from canvas to file Object
+        let cur_file = rub.get_canvas().toDataURL()
+        // console.log(cur_file);
+        image_list.push(cur_file)
       }
-      resolve();
-    });
-    
-  });
+      resolve()
+    })
+  })
 }
 
-function convertCanvasToImage(canvas, filename) {
-  return this.dataURLtoFile(canvas.toDataURL("image/png"), filename);
+function fillImageWithSubtitles(subtitleConfigs, img_list, isSlowMotion) {
+  var subtitles = new Array()
+
+  if (subtitleConfigs) {
+    for (let index = 0; index < subtitleConfigs.length; index++) {
+      const element = subtitleConfigs[index]
+      // check subtitle index
+      if (
+        element.startFrameIndex < 0 ||
+        element.startFrameIndex > img_list.length ||
+        element.endFrameIndex < 0 ||
+        element.endFrameIndex.index > img_list.length
+      ) {
+        throw Error('frame index is wrong, out of array.')
+      }
+
+      for (let subIndex = element.startFrameIndex; subIndex < element.endFrameIndex; subIndex++) {
+        subtitles[subIndex] = element.text
+      }
+    }
+  }
+
+  var image_list_with_subtitle = []
+  for (let index = 0; index < img_list.length; index++) {
+    let defaultText = isSlowMotion ? index : ''
+    image_list_with_subtitle.push({
+      src: img_list[index],
+      text: index < subtitles.length && subtitles[index] ? subtitles[index] : defaultText
+    })
+  }
+  return image_list_with_subtitle
 }
 
 function createImgElement(gifFile) {
-  const gifImg = document.createElement("img");
-  // gif库需要img标签配置下面两个属性
-  gifImg.setAttribute("rel:animated_src", gifFile);
-  gifImg.setAttribute("rel:auto_play", "0");
+  const gifImg = document.createElement('img')
+  // gifshot library need input these two attributes in img tag
+  gifImg.setAttribute('rel:animated_src', gifFile)
+  gifImg.setAttribute('rel:auto_play', '0')
 
-  const div = document.createElement("div");
-  div.appendChild(gifImg); //防止报错
-  return gifImg;
+  const div = document.createElement('div')
+  div.appendChild(gifImg) //in case throw error
+  return gifImg
 }
 
-
 export default {
-  readFile,
   readGif,
-};
+  renderGifWithSubtitle
+}
